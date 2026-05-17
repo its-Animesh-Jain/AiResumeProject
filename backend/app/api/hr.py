@@ -1,7 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
 from typing import List
-from app.db.session import get_db
 from app.models.models import Job, Application, User, UserRole, ApplicationStatus
 from app.schemas.schemas import JobCreate, JobResponse, ApplicationResponse
 from app.api.deps import get_current_user
@@ -9,9 +7,8 @@ from app.api.deps import get_current_user
 router = APIRouter()
 
 @router.post("/jobs", response_model=JobResponse)
-def create_job(
+async def create_job(
     job_in: JobCreate,
-    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     if current_user.role != UserRole.HR:
@@ -21,44 +18,40 @@ def create_job(
         hr_id=current_user.id,
         **job_in.dict()
     )
-    db.add(job)
-    db.commit()
-    db.refresh(job)
+    await job.insert()
     return job
 
 @router.get("/jobs", response_model=List[JobResponse])
-def get_my_jobs(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def get_my_jobs(current_user: User = Depends(get_current_user)):
     if current_user.role != UserRole.HR:
         raise HTTPException(status_code=403, detail="Only HR can view their jobs")
-    return db.query(Job).filter(Job.hr_id == current_user.id).all()
+    return await Job.find(Job.hr_id == current_user.id).to_list()
 
 @router.get("/jobs/{job_id}/applicants", response_model=List[ApplicationResponse])
-def get_applicants(
-    job_id: int,
-    db: Session = Depends(get_db),
+async def get_applicants(
+    job_id: str,
     current_user: User = Depends(get_current_user)
 ):
-    job = db.query(Job).filter(Job.id == job_id, Job.hr_id == current_user.id).first()
-    if not job:
+    job = await Job.get(job_id)
+    if not job or job.hr_id != current_user.id:
         raise HTTPException(status_code=404, detail="Job not found or unauthorized")
     
-    return db.query(Application).filter(Application.job_id == job_id).all()
+    return await Application.find(Application.job_id == job_id).to_list()
 
 @router.post("/applications/{application_id}/status")
-def update_application_status(
-    application_id: int,
+async def update_application_status(
+    application_id: str,
     status: ApplicationStatus,
-    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    application = db.query(Application).join(Job).filter(
-        Application.id == application_id,
-        Job.hr_id == current_user.id
-    ).first()
-    
+    application = await Application.get(application_id)
     if not application:
-        raise HTTPException(status_code=404, detail="Application not found or unauthorized")
+        raise HTTPException(status_code=404, detail="Application not found")
+        
+    job = await Job.get(application.job_id)
+    if not job or job.hr_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Unauthorized")
     
     application.status = status
-    db.commit()
+    await application.save()
     return {"message": f"Application status updated to {status}"}

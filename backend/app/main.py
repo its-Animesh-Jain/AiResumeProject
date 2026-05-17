@@ -1,12 +1,21 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api import auth, jobs, student, hr
-from app.db.session import engine, Base
+from app.db.session import init_db
+from contextlib import asynccontextmanager
 
-# Create DB tables
-Base.metadata.create_all(bind=engine)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Initialize DB
+    await init_db()
+    yield
+    # Shutdown: Clean up if needed
+    pass
 
-app = FastAPI(title="AI-Powered Resume Shortlisting")
+app = FastAPI(
+    title="AI-Powered Resume Shortlisting",
+    lifespan=lifespan
+)
 
 app.add_middleware(
     CORSMiddleware,

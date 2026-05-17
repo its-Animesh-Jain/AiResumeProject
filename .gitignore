@@ -19,3 +19,12 @@ build/
 
 # VS Code settings
 .vscode/
+
+# Local database files
+*.db
+*.sqlite3
+
+# Uploaded files / resumes
+uploads/
+backend/uploads/
+*.pdf

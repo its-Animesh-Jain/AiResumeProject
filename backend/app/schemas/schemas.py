@@ -1,11 +1,19 @@
-from pydantic import BaseModel, EmailStr
-from typing import List, Optional
+from pydantic import BaseModel, EmailStr, BeforeValidator
+from typing import List, Optional, Annotated
 from app.models.models import UserRole, ApplicationStatus
+from beanie import PydanticObjectId
+
+# Custom type for handling MongoDB ObjectId and Adzuna integer IDs as strings in responses
+PyObjectId = Annotated[str, BeforeValidator(str)]
 
 class UserBase(BaseModel):
+    id: Optional[PyObjectId] = None
     email: EmailStr
     full_name: Optional[str] = None
     role: UserRole
+
+    class Config:
+        from_attributes = True
 
 class UserCreate(UserBase):
     password: str
@@ -30,9 +38,14 @@ class JobCreate(JobBase):
     pass
 
 class JobResponse(JobBase):
-    id: int
-    hr_id: int
-    match_percentage: Optional[float] = None # Added for matching recommendations
+    id: PyObjectId
+    hr_id: Optional[PyObjectId] = None
+    match_percentage: Optional[float] = None
+    source: Optional[str] = "local"
+    redirect_url: Optional[str] = None
+    company: Optional[str] = None
+    reasons: Optional[List[str]] = []
+    detected_domain: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -41,7 +54,7 @@ class ResumeBase(BaseModel):
     extracted_data: Optional[dict] = None
 
 class ResumeResponse(ResumeBase):
-    id: int
+    id: PyObjectId
     file_path: str
     extracted_text: str
 
@@ -49,12 +62,12 @@ class ResumeResponse(ResumeBase):
         from_attributes = True
 
 class ApplicationBase(BaseModel):
-    job_id: int
+    job_id: PyObjectId
 
 class ApplicationResponse(BaseModel):
-    id: int
-    job_id: int
-    student_id: int
+    id: PyObjectId
+    job_id: PyObjectId
+    student_id: PyObjectId
     status: ApplicationStatus
     match_score: float
     match_details: dict

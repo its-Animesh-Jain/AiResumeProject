@@ -1,7 +1,8 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, JSON, Float, Enum as SQLEnum
-from sqlalchemy.orm import relationship
+from beanie import Document, PydanticObjectId
+from pydantic import Field
+from typing import List, Optional, Any
 import enum
-from app.db.session import Base
+from datetime import datetime
 
 class UserRole(str, enum.Enum):
     STUDENT = "student"
@@ -12,54 +13,42 @@ class ApplicationStatus(str, enum.Enum):
     ACCEPTED = "accepted"
     REJECTED = "rejected"
 
-class User(Base):
-    __tablename__ = "users"
+class User(Document):
+    email: str = Field(unique=True)
+    hashed_password: str
+    role: UserRole
+    full_name: Optional[str] = None
 
-    id = Column(Integer, primary_key=True, index=True)
-    email = Column(String, unique=True, index=True, nullable=False)
-    hashed_password = Column(String, nullable=False)
-    role = Column(SQLEnum(UserRole), nullable=False)
-    full_name = Column(String)
+    class Settings:
+        name = "users"
 
-    resumes = relationship("Resume", back_populates="owner")
-    jobs_posted = relationship("Job", back_populates="hr_user")
-    applications = relationship("Application", back_populates="student")
+class Resume(Document):
+    user_id: PydanticObjectId
+    file_path: str
+    extracted_text: str
+    extracted_data: dict = Field(default_factory=dict)
 
-class Resume(Base):
-    __tablename__ = "resumes"
+    class Settings:
+        name = "resumes"
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
-    file_path = Column(String)
-    extracted_text = Column(String)
-    extracted_data = Column(JSON)  # skills, experience, education
+class Job(Document):
+    hr_id: PydanticObjectId
+    title: str
+    description: str
+    required_skills: List[str] = Field(default_factory=list)
+    experience: str
+    location: str
+    created_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
 
-    owner = relationship("User", back_populates="resumes")
+    class Settings:
+        name = "jobs"
 
-class Job(Base):
-    __tablename__ = "jobs"
+class Application(Document):
+    job_id: PydanticObjectId
+    student_id: PydanticObjectId
+    status: ApplicationStatus = ApplicationStatus.PENDING
+    match_score: float
+    match_details: dict = Field(default_factory=dict)
 
-    id = Column(Integer, primary_key=True, index=True)
-    hr_id = Column(Integer, ForeignKey("users.id"))
-    title = Column(String, nullable=False)
-    description = Column(String, nullable=False)
-    required_skills = Column(JSON)  # List of skills
-    experience = Column(String)
-    location = Column(String)
-    created_at = Column(String) # For simplicity, can be DateTime
-
-    hr_user = relationship("User", back_populates="jobs_posted")
-    applications = relationship("Application", back_populates="job")
-
-class Application(Base):
-    __tablename__ = "applications"
-
-    id = Column(Integer, primary_key=True, index=True)
-    job_id = Column(Integer, ForeignKey("jobs.id"))
-    student_id = Column(Integer, ForeignKey("users.id"))
-    status = Column(SQLEnum(ApplicationStatus), default=ApplicationStatus.PENDING)
-    match_score = Column(Float)
-    match_details = Column(JSON) # matched_skills, missing_skills
-
-    job = relationship("Job", back_populates="applications")
-    student = relationship("User", back_populates="applications")
+    class Settings:
+        name = "applications"
