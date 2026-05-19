@@ -4,8 +4,8 @@ beanie
 motor
 pydantic[email]
 python-jose[cryptography]
-bcrypt==4.0.1
 passlib[bcrypt]
+bcrypt==4.0.1
 python-multipart
 spacy
 sentence-transformers
@@ -14,5 +14,3 @@ python-docx
 scikit-learn
 requests
 python-dotenv
-cors
-httpx==0.27.0

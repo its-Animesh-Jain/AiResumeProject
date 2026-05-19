@@ -1,13 +1,18 @@
-from motor.motor_asyncio import AsyncIOMotorClient
+import motor.motor_asyncio
 from beanie import init_beanie
-from app.models.models import User, Resume, Job, Application
-from app.core.config import settings
+from app.models.models import User, Job, Application
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+MONGODB_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017/ai_resume_db")
 
 async def init_db():
-    # Approach 1: Pass the connection string directly to Beanie.
-    # Beanie will use the built-in PyMongo 4.9+ async support.
-    # This often avoids compatibility issues with Motor's __call__ behavior.
+    client = motor.motor_asyncio.AsyncIOMotorClient(MONGODB_URL)
+    db_name = MONGODB_URL.split("/")[-1].split("?")[0] or "ai_resume_db"
+    db = client[db_name]
     await init_beanie(
-        connection_string=settings.DATABASE_URL,
-        document_models=[User, Resume, Job, Application]
+        database=db,
+        document_models=[User, Job, Application]
     )

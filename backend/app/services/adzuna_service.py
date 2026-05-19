@@ -1,6 +1,8 @@
 import httpx
 import logging
+import re
 from app.services.ai_service import AIService
+from typing import List, Dict
 
 ADZUNA_APP_ID = "37c7418c"
 ADZUNA_APP_KEY = "a87f8a7b14b4bb76ce4d5af22c15e357"
@@ -8,51 +10,67 @@ ADZUNA_BASE_URL = "https://api.adzuna.com/v1/api/jobs/in/search/1"
 
 logger = logging.getLogger(__name__)
 
-async def fetch_adzuna_jobs(query: str = "developer", location: str = "india", count: int = 20) -> list[dict]:
-    params = {
-        "app_id": ADZUNA_APP_ID,
-        "app_key": ADZUNA_APP_KEY,
-        "results_per_page": count,
-        "what": query,
-        "content-type": "application/json"
-    }
-    
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            response = await client.get(ADZUNA_BASE_URL, params=params)
-            response.raise_for_status()
-            data = response.json()
-            
-            adzuna_jobs = []
-            for result in data.get("results", []):
-                adzuna_id = str(result.get("id"))
-                # Use a negative integer derived from Adzuna's string ID
-                mapped_id = -(int(adzuna_id) % 2_000_000_000)
+class AdzunaService:
+    @staticmethod
+    async def fetch_jobs(query: str = "jobs", country: str = "in", count: int = 15) -> List[Dict]:
+        params = {
+            "app_id": ADZUNA_APP_ID,
+            "app_key": ADZUNA_APP_KEY,
+            "results_per_page": count,
+            "what": query,
+            "content-type": "application/json"
+        }
+        
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                url = f"https://api.adzuna.com/v1/api/jobs/{country}/search/1"
+                logger.info(f"Fetching Adzuna jobs: {url} with query '{query}'")
+                response = await client.get(url, params=params)
                 
-                description = result.get("description", "")
-                # Truncate description to 1000 chars
-                truncated_desc = (description[:997] + "...") if len(description) > 1000 else description
+                if response.status_code != 200:
+                    logger.error(f"Adzuna API Error: {response.status_code} - {response.text}")
+                    return []
                 
-                # Extract skills using existing AIService
-                required_skills = AIService.extract_skills(description)
+                data = response.json()
+                logger.info(f"Adzuna returned {len(data.get('results', []))} jobs")
                 
-                job_dict = {
-                    "id": mapped_id,
-                    "hr_id": 0,  # Sentinel value for external jobs
-                    "title": result.get("title", "Unknown Title"),
-                    "description": truncated_desc,
-                    "required_skills": required_skills,
-                    "experience": "Not specified",
-                    "location": result.get("location", {}).get("display_name", "Unknown Location"),
-                    "match_percentage": None,
-                    "source": "adzuna",
-                    "redirect_url": result.get("redirect_url"),
-                    "company": result.get("company", {}).get("display_name", "Unknown")
-                }
-                adzuna_jobs.append(job_dict)
-            
-            return adzuna_jobs
-            
-    except Exception as e:
-        logger.error(f"Error fetching jobs from Adzuna: {str(e)}")
-        return []
+                adzuna_jobs = []
+                for result in data.get("results", []):
+                    # Clean the title and description (remove HTML tags if any)
+                    title = re.sub('<[^<]+?>', '', result.get("title", "Unknown Role"))
+                    description = re.sub('<[^<]+?>', '', result.get("description", ""))
+                    
+                    # FIX: Use consistent string ID for external jobs
+                    adzuna_id = str(result.get("id"))
+                    mapped_id = f"ext_adzuna_{adzuna_id}"
+                    
+                    # Extract skills using the analyze_resume
+                    analysis = AIService.analyze_resume(description)
+                    
+                    # Ensure required_skills is at least an empty list if analysis fails
+                    req_skills = analysis.get("skills", []) if analysis else []
+                    
+                    # Extract company name
+                    company = result.get("company", {}).get("display_name", "Unknown Company")
+                    
+                    job_dict = {
+                        "id": mapped_id,
+                        "hr_id": "external",
+                        "title": title,
+                        "company": company,
+                        "description": description,
+                        "required_skills": req_skills,
+                        "experience_years": analysis.get("experience", 0) if analysis else 0,
+                        "location": result.get("location", {}).get("display_name", "Remote"),
+                        "is_external": True,
+                        "external_url": result.get("redirect_url"),
+                        "match_percentage": None,
+                        "source": "adzuna"
+                    }
+                    adzuna_jobs.append(job_dict)
+                
+                return adzuna_jobs
+                
+        except Exception as e:
+            logger.error(f"Error fetching Adzuna jobs: {str(e)}")
+            return []

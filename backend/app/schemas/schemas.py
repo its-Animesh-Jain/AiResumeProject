@@ -1,77 +1,56 @@
-from pydantic import BaseModel, EmailStr, BeforeValidator
-from typing import List, Optional, Annotated
+from pydantic import BaseModel, EmailStr, Field
+from typing import Any, Dict, List, Optional
 from app.models.models import UserRole, ApplicationStatus
-from beanie import PydanticObjectId
-
-# Custom type for handling MongoDB ObjectId and Adzuna integer IDs as strings in responses
-PyObjectId = Annotated[str, BeforeValidator(str)]
 
 class UserBase(BaseModel):
-    id: Optional[PyObjectId] = None
     email: EmailStr
-    full_name: Optional[str] = None
+    full_name: str
     role: UserRole
 
-    class Config:
-        from_attributes = True
-
 class UserCreate(UserBase):
-    password: str
+    password: str = Field(..., min_length=8)
 
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
 
+class UserResponse(UserBase):
+    pass
+
 class Token(BaseModel):
     access_token: str
     token_type: str
-    user: UserBase
+    user: UserResponse
 
-class JobBase(BaseModel):
-    title: str
-    description: str
-    required_skills: List[str]
-    experience: str
-    location: str
+class JobCreate(BaseModel):
+    title: str = Field(..., min_length=5, max_length=100)
+    description: str = Field(..., min_length=20)
+    required_skills: List[str] = Field(default_factory=list)
+    experience_years: int = Field(..., ge=0, le=50)
+    location: str = Field(..., min_length=2)
 
-class JobCreate(JobBase):
-    pass
-
-class JobResponse(JobBase):
-    id: PyObjectId
-    hr_id: Optional[PyObjectId] = None
+class JobResponse(JobCreate):
+    id: str
+    hr_id: str
+    company: Optional[str] = "Internal"
     match_percentage: Optional[float] = None
-    source: Optional[str] = "local"
-    redirect_url: Optional[str] = None
-    company: Optional[str] = None
-    reasons: Optional[List[str]] = []
-    detected_domain: Optional[str] = None
+    is_external: bool = False
+    external_url: Optional[str] = None
+    source: Optional[str] = "internal"
 
-    class Config:
-        from_attributes = True
-
-class ResumeBase(BaseModel):
-    extracted_data: Optional[dict] = None
-
-class ResumeResponse(ResumeBase):
-    id: PyObjectId
-    file_path: str
-    extracted_text: str
-
-    class Config:
-        from_attributes = True
-
-class ApplicationBase(BaseModel):
-    job_id: PyObjectId
+class ApplicationStatusUpdate(BaseModel):
+    status: ApplicationStatus
 
 class ApplicationResponse(BaseModel):
-    id: PyObjectId
-    job_id: PyObjectId
-    student_id: PyObjectId
+    id: str
+    job_id: str
+    student_id: str
+    student_name: str
     status: ApplicationStatus
     match_score: float
     match_details: dict
-    job: Optional[JobResponse] = None
-
-    class Config:
-        from_attributes = True
+    ai_analysis: Optional[dict] = None
+    job_metadata: Optional[dict] = None
+    is_external_job: bool = False
+    source: str = "internal"
+    job: Optional[Dict[str, Any]] = None

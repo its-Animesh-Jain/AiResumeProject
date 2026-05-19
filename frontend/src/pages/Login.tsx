@@ -25,7 +25,7 @@ const Login = () => {
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-900 text-white">
       <form onSubmit={handleLogin} className="w-full max-w-md p-8 bg-gray-800 rounded-lg shadow-xl border border-gray-700">
-        <h2 className="mb-6 text-3xl font-bold text-center text-blue-500">Login</h2>
+        <h2 className="mb-6 text-3xl font-bold text-center text-blue-500 font-sans">Login</h2>
         {error && <p className="mb-4 text-sm text-red-500 text-center">{error}</p>}
         <div className="mb-4">
           <label className="block mb-2 text-sm font-medium">Email</label>
@@ -33,7 +33,7 @@ const Login = () => {
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-white"
             required
           />
         </div>
@@ -43,18 +43,18 @@ const Login = () => {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-white"
             required
           />
         </div>
         <button
           type="submit"
-          className="w-full py-2 font-semibold text-white bg-blue-600 rounded-md hover:bg-blue-700 transition duration-200"
+          className="w-full py-2 font-semibold text-white bg-blue-600 rounded-md hover:bg-blue-700 transition duration-200 shadow-lg"
         >
           Login
         </button>
-        <p className="mt-4 text-center text-sm">
-          Don't have an account? <Link to="/signup" className="text-blue-400 hover:underline">Sign up</Link>
+        <p className="mt-4 text-center text-sm text-gray-400">
+          Don't have an account? <Link to="/signup" className="text-blue-400 hover:underline font-bold">Sign up</Link>
         </p>
       </form>
     </div>

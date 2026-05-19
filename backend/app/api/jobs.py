@@ -1,84 +1,65 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from typing import List
-from app.models.models import Job, Resume, UserRole
-from app.schemas.schemas import JobResponse, JobCreate
+import logging
+from app.models.models import Job, User, UserRole
+from app.schemas.schemas import JobResponse
 from app.api.deps import get_current_user
+from app.services.adzuna_service import AdzunaService
 from app.services.ai_service import AIService
-from app.services.adzuna_service import fetch_adzuna_jobs
-from beanie import PydanticObjectId
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 @router.get("/", response_model=List[JobResponse])
-async def get_jobs(current_user = Depends(get_current_user)):
-    # 1. Fetch local jobs
-    local_jobs = await Job.find_all().to_list()
+async def get_jobs(current_user: User = Depends(get_current_user)):
+    # 1. Fetch internal jobs
+    internal_jobs = await Job.find_all().to_list()
+    results = [{**j.dict(), "id": str(j.id), "company": "Internal", "source": "internal"} for j in internal_jobs]
     
-    # 2. Universal Search Logic
-    search_queries = ["software engineer"] # Default
-    resume_data = None
-    
-    if current_user.role == UserRole.STUDENT:
-        resume = await Resume.find_one(Resume.user_id == current_user.id)
-        if resume:
-            if "search_queries" in resume.extracted_data:
-                search_queries = resume.extracted_data["search_queries"]
-            
-            # Prepare data for universal matching
-            resume_data = {
-                "full_text": resume.extracted_text,
-                "domain": resume.extracted_data.get("domain", "general"),
-                "skills": resume.extracted_data.get("skills", []),
-                "search_queries": search_queries
-            }
-    
-    # 3. Fetch Adzuna jobs using multiple queries if needed
-    all_adzuna_jobs = []
-    # Use up to 2 top queries to get a diverse but relevant set
-    for query in search_queries[:2]:
-        jobs = await fetch_adzuna_jobs(query=query, count=15)
-        all_adzuna_jobs.extend(jobs)
-    
-    # Remove duplicates from Adzuna (based on title + company)
-    seen_jobs = set()
-    unique_adzuna_jobs = []
-    for job in all_adzuna_jobs:
-        job_key = f"{job['title']}-{job['company']}"
-        if job_key not in seen_jobs:
-            seen_jobs.add(job_key)
-            unique_adzuna_jobs.append(job)
-    
-    # 4. Convert local jobs to dicts and merge
-    all_jobs = []
-    for job in local_jobs:
-        job_dict = job.dict()
-        job_dict["id"] = job.id
-        job_dict["hr_id"] = job.hr_id
-        job_dict["source"] = "local"
-        all_jobs.append(job_dict)
-    
-    all_jobs.extend(unique_adzuna_jobs)
-    
-    # 5. Calculate universal match scores if resume exists
-    if resume_data:
-        for job in all_jobs:
-            match_res = AIService.calculate_universal_match(
-                resume_data, 
-                job["description"], 
-                job["title"]
-            )
-            job["match_percentage"] = match_res["match_score"]
-            job["reasons"] = match_res["reasons"] # Add matching reasons
-            job["detected_domain"] = match_res["detected_domain"]
+    # 2. Fetch external jobs based on user profile
+    search_query = "jobs"
+    country = "in" # Default to India as per project context
+    if current_user.role == UserRole.STUDENT and current_user.resume:
+        # Use detected domain and top skills to build a better query
+        domain = current_user.resume.detected_domain
+        skills = current_user.resume.skills[:2]
         
-        # 6. Sort by match percentage
-        all_jobs.sort(key=lambda x: x.get("match_percentage", 0), reverse=True)
-            
-    return all_jobs
+        # Log parsing results for debugging
+        logger.info(f"User Resume Analysis - Domain: {domain}, Skills: {skills}")
+        
+        if domain and domain != "general":
+            search_query = f"{domain} {' '.join(skills)}"
+        elif skills:
+            search_query = " ".join(skills)
 
-@router.get("/{job_id}", response_model=JobResponse)
-async def get_job(job_id: str):
-    job = await Job.get(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-    return job
+    try:
+        logger.info(f"Final Adzuna Query: {search_query}")
+        external_jobs = await AdzunaService.fetch_jobs(search_query, country, count=25)
+        
+        # Filter out duplicates (based on title and company) if they already exist in results
+        existing_titles = {r["title"].lower() for r in results}
+        for ext_job in external_jobs:
+            if ext_job["title"].lower() not in existing_titles:
+                results.append(ext_job)
+                
+    except Exception as e:
+        logger.error(f"Failed to fetch Adzuna jobs: {str(e)}")
+    
+    # 3. If student, calculate real-time match scores
+    if current_user.role == UserRole.STUDENT and current_user.resume:
+        for job in results:
+            match = AIService.calculate_match(
+                current_user.resume.extracted_text,
+                job["description"],
+                job["required_skills"]
+            )
+            job["match_percentage"] = match["match_score"]
+            
+            # Log individual job scores if very low for debugging
+            if match["match_score"] < 10:
+                logger.warning(f"Low match score ({match['match_score']}%) for job: {job['title']}")
+        
+        # Sort by match percentage - prioritize internal jobs for equal scores
+        results.sort(key=lambda x: (x.get("match_percentage", 0), not x.get("is_external", False)), reverse=True)
+        
+    return results

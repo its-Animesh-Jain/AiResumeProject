@@ -7,6 +7,7 @@ import ResumeUpload from './pages/ResumeUpload';
 import JobsPage from './pages/JobsPage';
 import PostJob from './pages/PostJob';
 import ApplicantsPage from './pages/ApplicantsPage';
+import GlobalApplicantsPage from './pages/GlobalApplicantsPage';
 import { useAuthStore } from './store/authStore';
 
 const ProtectedRoute = ({ children, role }: { children: React.ReactNode, role?: 'student' | 'hr' }) => {
@@ -23,7 +24,7 @@ function App() {
 
   return (
     <Router>
-      <div className="min-h-screen bg-gray-900 text-white">
+      <div className="min-h-screen bg-gray-900 text-white font-sans antialiased">
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
@@ -64,6 +65,11 @@ function App() {
           <Route path="/hr/jobs/:jobId/applicants" element={
             <ProtectedRoute role="hr">
               <ApplicantsPage />
+            </ProtectedRoute>
+          } />
+          <Route path="/hr/applicants/all" element={
+            <ProtectedRoute role="hr">
+              <GlobalApplicantsPage />
             </ProtectedRoute>
           } />
         </Routes>
